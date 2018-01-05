@@ -68,13 +68,10 @@ class NMTEngineTrainer:
 
             self.learning_rate = 1.0
             self.lr_decay = 0.9
-            self.lr_decay_steps = 10000
-            self.lr_decay_start_at = 50000
+            self.lr_decay_steps = 10000 # decrease learning rate every 'lr_decay_steps' steps
+            self.lr_decay_start_at = 50000  # start learning rate decay after 'start_decay_at' steps
 
             self.optimizer_metadata = NMTOptim.Metadata()
-
-            # self.optimizer_metadata.method = 'sgd'
-            # self.optimizer_metadata.max_grad_norm = 5
 
             self.n_checkpoints = 20  # checkpoints saved during training and used for termination condition
             self.n_avg_checkpoints = 20  # number of checkpoints to merge at the end of training process
@@ -96,6 +93,7 @@ class NMTEngineTrainer:
     class State(object):
         def __init__(self, size):
             self.size = size
+            self.learning_rate = None
             self.checkpoint = None
             self.history = []
 
@@ -147,7 +145,7 @@ class NMTEngineTrainer:
                 state.__dict__ = json.loads(stream.read())
             return state
 
-    def __init__(self, engine, options=None, optimizer=None, state=None):
+    def __init__(self, engine, optimizer, options=None, state=None):
         self._logger = logging.getLogger('nmmt.NMTEngineTrainer')
         self._engine = engine
         self.opts = options if options is not None else NMTEngineTrainer.Options()
@@ -188,7 +186,8 @@ class NMTEngineTrainer:
             scores_t = generator(out_t)
             loss_t = criterion(scores_t, targ_t.view(-1))
             pred_t = scores_t.max(1)[1]
-            num_correct_t = pred_t.data.eq(targ_t.view(-1).data).masked_select(targ_t.ne(Constants.PAD).view(-1).data).sum()
+            num_correct_t = pred_t.data.eq(targ_t.view(-1).data).masked_select(
+                targ_t.ne(Constants.PAD).view(-1).data).sum()
             num_correct += num_correct_t
             loss += loss_t.data[0]
             if not evaluation:
@@ -250,7 +249,6 @@ class NMTEngineTrainer:
 
     def train_model(self, train_dataset, valid_dataset=None, save_path=None):
         state_file_path = None if save_path is None else os.path.join(save_path, 'state.json')
-        optimizer_file_path = None if save_path is None else os.path.join(save_path, 'optimizer.dat')
 
         # set the mask to None; required when the same model is trained after a translation
         if torch_is_multi_gpu():
@@ -358,10 +356,10 @@ class NMTEngineTrainer:
                     self._log('Checkpoint at step %d (epoch %.2f): %s' % (step, epoch, str(checkpoint_stats)))
                     self._engine.save(checkpoint_file)
                     self.state.add_checkpoint(step, checkpoint_file, checkpoint_ppl)
+                    self.state.learning_rate = self.optimizer.lr
                     self.state.save_to_file(state_file_path)
 
                     self.optimizer.save_to_file(optimizer_file_path)
-
                     self._log('Checkpoint saved: path = %s ppl = %.2f' % (checkpoint_file, checkpoint_ppl))
 
                     avg_ppl = self.state.average_perplexity()

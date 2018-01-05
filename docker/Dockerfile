@@ -3,10 +3,12 @@ MAINTAINER Davide Caroselli <davide.caroselli@translated.net>
 
 # Install dependencies
 RUN apt-get -y update
+
 RUN apt-get install -y software-properties-common
 RUN apt-get install -y wget
-RUN apt-get install -y libnuma-dev
+RUN apt-get -y update --fix-missing
 
+RUN apt-get install -y libnuma-dev
 RUN add-apt-repository -y ppa:openjdk-r/ppa
 RUN apt-get -y update
 
@@ -39,7 +41,7 @@ RUN chown mmt:mmt /home/mmt
 USER mmt
 
 # Install MMT
-RUN wget -qO- https://github.com/ModernMT/MMT/releases/download/v2.1/mmt-2.1-ubuntu.tar.gz | tar xvfz -
+RUN wget -qO- https://github.com/ModernMT/MMT/releases/download/v2.2/mmt-2.2-ubuntu.tar.gz | tar xvfz -
 WORKDIR /home/mmt/mmt
 
 # Make MMT example engine

@@ -46,8 +46,9 @@ class NMTEngine(object):
         __custom_values = {'True': True, 'False': False, 'None': None}
 
         def __init__(self):
-            self.encoder_layers = 2  # Number of layers in the LSTM encoder
-            self.decoder_layers = 2  # Number of layers in the LSTM decoder
+            self.layers = 2  # Number of layers in the LST decoder/encoder
+            self.encoder_layers = None  # Number of layers in the LSTM encoder only
+            self.decoder_layers = None  # Number of layers in the LSTM decoder only
             self.rnn_size = 500  # Size of hidden states
             self.rnn_type = 'LSTM'  # The gate type used in the RNNs
             self.word_vec_size = 500  # Word embedding sizes
@@ -244,7 +245,7 @@ class NMTEngine(object):
             epochs = epochs if epochs is not None else _epochs
             learning_rate = learning_rate if learning_rate is not None else _learning_rate
 
-        if learning_rate > 0. or epochs > 0:
+        if learning_rate > 0. and epochs > 0:
             if self._tuner is None:
 
                 optimizer = NMTOptim.new_instance(self.tuning_metadata)
@@ -252,7 +253,7 @@ class NMTEngine(object):
                 tuner_opts = NMTEngineTrainer.Options()
                 tuner_opts.log_level = logging.NOTSET
 
-                self._tuner = NMTEngineTrainer(self, options=tuner_opts, optimizer=optimizer)
+                self._tuner = NMTEngineTrainer(self, optimizer, options=tuner_opts)
 
             self._tuner.opts.step_limit = epochs
             self._tuner.reset_learning_rate(learning_rate)

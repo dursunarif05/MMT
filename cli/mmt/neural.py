@@ -217,8 +217,6 @@ class NMTDecoder:
 
         engine.running_state = NMTEngine.HOT
 
-
-
         if state is not None and state.checkpoint is not None:
             optimizer_file = os.path.join(working_dir, 'optimizer.dat')
             with _log_timed_action(self._logger, 'Loading optimizer from checkpoint %s' % (optimizer_file)):
@@ -229,7 +227,7 @@ class NMTDecoder:
 
         self._logger.info('Optimizer metadata after creation: %s' % str(optimizer.metadata))
 
-        trainer = NMTEngineTrainer(engine, state=state, optimizer=optimizer, options=training_opts)
+        trainer = NMTEngineTrainer(engine, optimizer, state=state, options=training_opts)
 
         # Training model -----------------------------------------------------------------------------------------------
         self._logger.info('Vocabulary size. source = %d; target = %d' % (src_dict.size(), tgt_dict.size()))
