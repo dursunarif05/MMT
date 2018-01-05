@@ -17,15 +17,15 @@ class Optim(object):
             raise RuntimeError("Invalid optim method: " + self.method)
 
     def __init__(self, method, lr, max_grad_norm,
-                 lr_decay=1, lr_start_decay_at=None):
+                 lr_decay=1, lr_decay_start=False):
 
         self.last_ppl = None
         self.max_grad_norm = max_grad_norm
         self.method = method
         self.lr = lr
         self.lr_decay = lr_decay
-        self.lr_start_decay_at = lr_start_decay_at
-        self.lr_start_decay = False
+        self.lr_decay_start = lr_decay_start
+        self.optimizer = None
 
     def step(self):
         "Compute gradients norm."
@@ -40,7 +40,16 @@ class Optim(object):
         or if we hit the start_decay_at limit.
         """
 
-        if self.lr_start_decay:
+        if self.lr_decay_start:
             self.lr = self.lr * self.lr_decay
 
         self.optimizer.param_groups[0]['lr'] = self.lr
+
+    def get_state_dict(self):
+        state_dict = {k: v for k, v in self.__dict__.iteritems() if 'params' not in k}
+        state_dict['optimizer'] = self.optimizer.state_dict() if self.optimizer is not None else {}
+        return state_dict
+
+    def load_state_dict(self, state_dict):
+        self.__dict__.update({k: v for k, v in state_dict.iteritems() if 'optimizer' not in k})
+        self.optimizer.load_state_dict(state_dict['optimizer'])

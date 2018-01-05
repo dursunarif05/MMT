@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(LIB_DIR, 'pynmt')))
 
 import onmt
 import nmmt
-from nmmt import NMTEngineTrainer, NMTEngine, SubwordTextProcessor, MMapDataset, Suggestion
+from nmmt import NMTEngineTrainer, NMTEngine, NMTOptim, SubwordTextProcessor, MMapDataset, Suggestion
 from nmmt import torch_setup
 from nmmt import torch_utils
 import torch
@@ -174,10 +174,10 @@ class NMTDecoder:
 
     def train(self, train_path, working_dir, training_opts, checkpoint_path=None, metadata_path=None):
         self._logger.info('Training started for data "%s"' % train_path)
+        self._logger.info('Training_opts: %s' % str(training_opts))
 
         state = None
         state_file = os.path.join(working_dir, 'state.json')
-        optimizer_file = os.path.join(working_dir, 'optimizer.dat')
 
         if os.path.isfile(state_file):
             state = NMTEngineTrainer.State.load_from_file(state_file)
@@ -194,13 +194,9 @@ class NMTDecoder:
             src_dict, tgt_dict = vocab['src'], vocab['tgt']
 
         # Creating trainer ---------------------------------------------------------------------------------------------
-        optimizer = None
-
         if state is not None and state.checkpoint is not None:
             with _log_timed_action(self._logger, 'Resuming engine from step %d' % state.checkpoint['step']):
                 engine = NMTEngine.load_from_checkpoint(state.checkpoint['file'])
-                optimizer = torch.load(optimizer_file)
-                optimizer.optimizer.load_state_dict(optimizer.optimizer.state_dict())
         else:
             if checkpoint_path is not None:
                 with _log_timed_action(self._logger, 'Loading engine from %s' % checkpoint_path):
@@ -221,12 +217,25 @@ class NMTDecoder:
 
         engine.running_state = NMTEngine.HOT
 
+
+
+        if state is not None and state.checkpoint is not None:
+            optimizer_file = os.path.join(working_dir, 'optimizer.dat')
+            with _log_timed_action(self._logger, 'Loading optimizer from checkpoint %s' % (optimizer_file)):
+                optimizer = NMTOptim.load_from_file(optimizer_file)
+        else:
+            with _log_timed_action(self._logger, 'Creating optimizer from scratch'):
+                optimizer = NMTOptim.new_instance(metadata=training_opts.optimizer_metadata)
+
+        self._logger.info('Optimizer metadata after creation: %s' % str(optimizer.metadata))
+
         trainer = NMTEngineTrainer(engine, state=state, optimizer=optimizer, options=training_opts)
 
         # Training model -----------------------------------------------------------------------------------------------
         self._logger.info('Vocabulary size. source = %d; target = %d' % (src_dict.size(), tgt_dict.size()))
         self._logger.info('Engine parameters: %d' % engine.count_parameters())
         self._logger.info('Engine metadata: %s' % str(engine.metadata))
+        self._logger.info('Optimizer metadata: %s' % str(optimizer.metadata))
         self._logger.info('Trainer options: %s' % str(trainer.opts))
 
         with _log_timed_action(self._logger, 'Train model'):

@@ -10,8 +10,8 @@ from torch import nn, torch
 from torch.autograd import Variable
 
 from nmmt.torch_utils import torch_is_multi_gpu, torch_is_using_cuda
-from onmt import Constants, Optim
-
+from onmt import Constants
+from nmmt.NMTOptim import NMTOptim
 
 class _Stats(object):
     def __init__(self):
@@ -66,12 +66,15 @@ class NMTEngineTrainer:
             self.checkpoint_steps = 10000  # Drop a checkpoint every 'checkpoint_steps' steps
             self.step_limit = None  # If set, run 'step_limit' steps at most
 
-            self.optimizer = 'sgd'
-            self.learning_rate = 1.
-            self.max_grad_norm = 5
+            self.learning_rate = 1.0
             self.lr_decay = 0.9
-            self.lr_decay_steps = 10000  # decrease learning rate every 'lr_decay_steps' steps
-            self.lr_decay_start_at = 50000  # start learning rate decay after 'start_decay_at' steps
+            self.lr_decay_steps = 10000
+            self.lr_decay_start_at = 50000
+
+            self.optimizer_metadata = NMTOptim.Metadata()
+
+            # self.optimizer_metadata.method = 'sgd'
+            # self.optimizer_metadata.max_grad_norm = 5
 
             self.n_checkpoints = 20  # checkpoints saved during training and used for termination condition
             self.n_avg_checkpoints = 20  # number of checkpoints to merge at the end of training process
@@ -80,6 +83,9 @@ class NMTEngineTrainer:
             for key in self.__dict__:
                 if key in d:
                     self.__dict__[key] = d[key]
+
+            self.optimizer_metadata.lr = self.learning_rate
+            self.optimizer_metadata.lr_decay = self.lr_decay
 
         def __str__(self):
             return str(self.__dict__)
@@ -148,14 +154,11 @@ class NMTEngineTrainer:
 
         self.state = state if state is not None else NMTEngineTrainer.State(self.opts.n_checkpoints)
 
-        if optimizer is None:
-            optimizer = Optim(self.opts.optimizer, self.opts.learning_rate, max_grad_norm=self.opts.max_grad_norm,
-                              lr_decay=self.opts.lr_decay, lr_start_decay_at=self.opts.lr_decay_start_at)
-            optimizer.set_parameters(engine.model.parameters())
         self.optimizer = optimizer
+        self.opts.optimizer_metadata = self.optimizer.metadata
 
     def reset_learning_rate(self, value):
-        self.optimizer.lr = value
+        self.optimizer.optimizer.lr = value
         self.optimizer.set_parameters(self._engine.model.parameters())
 
     def _log(self, message):
@@ -237,7 +240,7 @@ class NMTEngineTrainer:
         outputs.backward(grad_output)
 
         # update the parameters
-        self.optimizer.step()
+        self.optimizer.optimizer.step()
 
         src_words = batch[0][1].data.sum()
         tgt_words = targets.data.ne(Constants.PAD).sum()
@@ -281,7 +284,7 @@ class NMTEngineTrainer:
             lr_decay_steps = min(self.opts.lr_decay_steps, number_of_batches_per_epoch)
 
             self._log('Initial optimizer parameters: lr = %f, lr_decay = %f'
-                      % (self.optimizer.lr, self.optimizer.lr_decay))
+                      % (self.optimizer.metadata.lr, self.optimizer.metadata.lr_decay))
 
             for step, batch in iterator:
                 # Steps limit ------------------------------------------------------------------------------------------
@@ -324,23 +327,23 @@ class NMTEngineTrainer:
 
                 # Learning rate update --------------------------------------------------------------------------------
                 if valid_ppl_stalled > 0:  # activate decay only if validation perplexity starts to increase
-                    if step > self.optimizer.lr_start_decay_at:
-                        if not self.optimizer.lr_start_decay:
+                    if step > self.opts.lr_decay_start_at:
+                        if not self.optimizer.optimizer.lr_decay_start:
                             self._log('Optimizer learning rate decay activated at step %d (epoch %.2f) '
                                       'with decay value %f; current lr value: %f'
-                                      % (step, epoch, self.optimizer.lr_decay, self.optimizer.lr))
-                        self.optimizer.lr_start_decay = True
+                                      % (step, epoch, self.optimizer.optimizer.lr_decay, self.optimizer.optimizer.lr))
+                        self.optimizer.optimizer.lr_decay_start = True
 
                 else:  # otherwise de-activate
-                    if self.optimizer.lr_start_decay:
+                    if self.optimizer.optimizer.lr_decay_start:
                         self._log('Optimizer learning rate decay de-activated at step %d (epoch %.2f); '
-                                  'current lr value: %f' % (step, epoch, self.optimizer.lr))
-                    self.optimizer.lr_start_decay = False
+                                  'current lr value: %f' % (step, epoch, self.optimizer.optimizer.lr))
+                    self.optimizer.optimizer.lr_decay_start = False
 
-                if self.optimizer.lr_start_decay and (step % lr_decay_steps) == 0:
-                    self.optimizer.updateLearningRate()
+                if self.optimizer.optimizer.lr_decay_start and (step % lr_decay_steps) == 0:
+                    self.optimizer.optimizer.updateLearningRate()
                     self._log('Optimizer learning rate after step %d (epoch %.2f) set to lr = %g'
-                              % (step, epoch, self.optimizer.lr))
+                              % (step, epoch, self.optimizer.optimizer.lr))
 
                 # Checkpoint -------------------------------------------------------------------------------------------
                 if (step % checkpoint_steps) == 0 and save_path is not None:
@@ -357,7 +360,7 @@ class NMTEngineTrainer:
                     self.state.add_checkpoint(step, checkpoint_file, checkpoint_ppl)
                     self.state.save_to_file(state_file_path)
 
-                    torch.save(self.optimizer, optimizer_file_path)
+                    self.optimizer.save_to_file(optimizer_file_path)
 
                     self._log('Checkpoint saved: path = %s ppl = %.2f' % (checkpoint_file, checkpoint_ppl))
 

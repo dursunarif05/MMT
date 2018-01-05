@@ -13,6 +13,8 @@ from nmmt.internal_utils import opts_object, log_timed_action
 from nmmt.torch_utils import torch_is_multi_gpu, torch_is_using_cuda, torch_get_gpus
 from onmt import Models, Translator, Constants, Dataset, Optim
 
+from nmmt.NMTEngineTrainer import NMTEngineTrainer
+from nmmt.NMTOptim import NMTOptim
 
 class _Translator(Translator):
     def __init__(self, src_dict, trg_dict, model):
@@ -56,10 +58,11 @@ class NMTEngine(object):
             self.dropout = 0.3  # Dropout probability; applied between LSTM stacks.
 
             # Tuning options -------------------------------------------------------------------------------------------
-            self.tuning_optimizer = 'sgd'  # Optimization method. [sgd|adagrad|adadelta|adam]
-            self.tuning_max_grad_norm = 5  # If norm(gradient vector) > max_grad_norm, re-normalize
-            self.tuning_max_learning_rate = 0.2
-            self.tuning_max_epochs = 10
+            self.tuning_metadata = NMTOptim.Metadata()
+            self.tuning_metadata.method = 'sgd'  # Optimization method. [sgd|adagrad|adadelta|adam]
+            self.tuning_metadata.max_grad_norm = 5  # If norm(gradient vector) > max_grad_norm, re-normalize
+            self.tuning_metadata.max_learning_rate = 0.2
+            self.tuning_metadata.max_epochs = 10
 
         def __str__(self):
             return str(self.__dict__)
@@ -163,7 +166,8 @@ class NMTEngine(object):
         decoder = Models.Decoder(self.metadata, self.trg_dict)
         model = Models.NMTModel(encoder, decoder)
 
-        generator = nn.Sequential(nn.Linear(self.metadata.rnn_size, self.trg_dict.size()), nn.LogSoftmax(dim=1))
+        # generator = nn.Sequential(nn.Linear(self.metadata.rnn_size, self.trg_dict.size()), nn.LogSoftmax(dim=1))
+        generator = nn.Sequential(nn.Linear(self.metadata.rnn_size, self.trg_dict.size()), nn.LogSoftmax())
 
         model.cpu()
         generator.cpu()
@@ -242,9 +246,8 @@ class NMTEngine(object):
 
         if learning_rate > 0. or epochs > 0:
             if self._tuner is None:
-                from nmmt.NMTEngineTrainer import NMTEngineTrainer
 
-                optimizer = Optim(self.metadata.tuning_optimizer, 1., max_grad_norm=self.metadata.tuning_max_grad_norm)
+                optimizer = NMTOptim.new_instance(self.tuning_metadata)
 
                 tuner_opts = NMTEngineTrainer.Options()
                 tuner_opts.log_level = logging.NOTSET

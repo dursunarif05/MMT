@@ -3,6 +3,7 @@ from models import Suggestion, Translation
 from NMTDecoder import NMTDecoder
 from NMTEngine import NMTEngine
 from NMTEngineTrainer import NMTEngineTrainer
+from NMTOptim import NMTOptim
 from IDataset import IDataset, DatasetWrapper
 from MMapDataset import MMapDataset
 from SubwordTextProcessor import SubwordTextProcessor
