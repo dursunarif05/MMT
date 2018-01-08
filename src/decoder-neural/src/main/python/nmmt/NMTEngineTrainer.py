@@ -156,6 +156,7 @@ class NMTEngineTrainer:
 
         self.optimizer = optimizer
         self.optimizer.set_parameters(engine.model.parameters())
+        self._logger.info("NMTEngineTrainer __init__ self.optimizer.lr:%f" % (self.optimizer.lr))
 
     def reset_learning_rate(self, value):
         self.optimizer.lr = value
@@ -340,10 +341,18 @@ class NMTEngineTrainer:
                                   'current lr value: %f' % (step, epoch, self.optimizer.lr))
                     self.optimizer.lr_start_decay = False
 
+                if step % lr_decay_steps == 0:
+                    self._log('Forcing activation of learning rate decay')
+                    self.optimizer.lr_start_decay = True
+
                 if self.optimizer.lr_start_decay and (step % lr_decay_steps) == 0:
                     self.optimizer.updateLearningRate()
                     self._log('Optimizer learning rate after step %d (epoch %.2f) set to lr = %g'
                               % (step, epoch, self.optimizer.lr))
+
+                if step % lr_decay_steps == 0:
+                    self._log('Forcing de-activation of learning rate decay')
+                    self.optimizer.lr_start_decay = False
 
                 # Checkpoint -------------------------------------------------------------------------------------------
                 if (step % checkpoint_steps) == 0 and save_path is not None:
